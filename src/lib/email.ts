@@ -23,7 +23,17 @@ export async function sendTicketEmail(params: SendTicketEmailParams): Promise<{ 
 
     let transporter: nodemailer.Transporter;
 
-    if (process.env.RESEND_API_KEY) {
+    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+      transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: process.env.SMTP_SECURE === "true",
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      });
+    } else if (process.env.RESEND_API_KEY) {
       transporter = nodemailer.createTransport({
         host: "smtp.resend.com",
         port: 465,
@@ -33,7 +43,7 @@ export async function sendTicketEmail(params: SendTicketEmailParams): Promise<{ 
           pass: process.env.RESEND_API_KEY,
         },
       });
-    } else if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    } else if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
       transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
         port: Number(process.env.SMTP_PORT) || 587,
