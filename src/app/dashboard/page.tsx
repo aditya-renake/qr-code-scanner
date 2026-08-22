@@ -188,6 +188,8 @@ export default function DashboardPage() {
       setTestingEmail(false);
     }
   };
+
+  const exportCSV = () => {
     if (!attendees.length) return;
     const headers = ["Reg Number", "Full Name", "Email", "Phone", "College", "Team", "Role", "Track", "T-Shirt", "Diet", "Main Gate Checked In", "Checkpoints Claimed"];
     const rows = attendees.map((a) => [

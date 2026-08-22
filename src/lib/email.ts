@@ -21,101 +21,9 @@ export async function sendTicketEmail(params: SendTicketEmailParams): Promise<{ 
       },
     });
 
-    // Direct Brevo REST API Support (works with xkeysib- API keys)
-    const brevoApiKey = process.env.BREVO_API_KEY || (process.env.SMTP_PASS?.startsWith("xkeysib-") ? process.env.SMTP_PASS : null);
-    if (brevoApiKey) {
-      const senderEmail = process.env.EMAIL_FROM?.match(/<([^>]+)>/)?.[1] || process.env.EMAIL_FROM || process.env.SMTP_USER || "tickets@hackseries.dev";
-      const senderName = process.env.EMAIL_FROM?.split("<")[0]?.trim() || "HackSeries Team";
-
-      const brevoRes = await fetch("https://api.brevo.com/v3/smtp/email", {
-        method: "POST",
-        headers: {
-          "api-key": brevoApiKey,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          sender: { name: senderName, email: senderEmail },
-          to: [{ email: attendee.email, name: attendee.fullName }],
-          subject: `🎟️ Your Official HackSeries 2026 Entry Pass [${attendee.regNumber}]`,
-          htmlContent: html,
-          attachment: [
-            {
-              name: `HackSeries_Pass_${attendee.regNumber}.png`,
-              content: qrBuffer.toString("base64"),
-            },
-          ],
-        }),
-      });
-
-      const resData = await brevoRes.json();
-      if (!brevoRes.ok) {
-        throw new Error(`Brevo Error: ${resData.message || JSON.stringify(resData)}`);
-      }
-
-      return {
-        success: true,
-        messageId: resData.messageId,
-      };
-    }
-
-    let transporter: nodemailer.Transporter;
-
-    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-      transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT) || 587,
-        secure: process.env.SMTP_SECURE === "true",
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-      });
-    } else if (process.env.RESEND_API_KEY) {
-      transporter = nodemailer.createTransport({
-        host: "smtp.resend.com",
-        port: 465,
-        secure: true,
-        auth: {
-          user: "resend",
-          pass: process.env.RESEND_API_KEY,
-        },
-      });
-    } else if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
-      transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT) || 587,
-        secure: process.env.SMTP_SECURE === "true",
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-      });
-    } else if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
-      transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: process.env.GMAIL_USER,
-          pass: process.env.GMAIL_APP_PASSWORD,
-        },
-      });
-    } else {
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: "smtp.ethereal.email",
-        port: 587,
-        secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-    }
-
     const eventName = "HackSeries 2026";
     const eventDates = "October 24 - 25, 2026";
     const eventVenue = "Main Innovation Auditorium & Arena, Campus Hub";
-    const fromSender = process.env.EMAIL_FROM || (process.env.RESEND_API_KEY ? "HackSeries Pass <onboarding@resend.dev>" : "HackSeries 2026 Team <no-reply@hackseries.dev>");
 
     const html = `<!DOCTYPE html>
 <html>
@@ -190,6 +98,89 @@ export async function sendTicketEmail(params: SendTicketEmailParams): Promise<{ 
   </table>
 </body>
 </html>`;
+
+    // 1. Direct Brevo REST API Support (works with xkeysib- API keys)
+    const brevoApiKey = process.env.BREVO_API_KEY || (process.env.SMTP_PASS?.startsWith("xkeysib-") ? process.env.SMTP_PASS : null);
+    if (brevoApiKey) {
+      const senderEmail = process.env.EMAIL_FROM?.match(/<([^>]+)>/)?.[1] || process.env.EMAIL_FROM || process.env.SMTP_USER || "tickets@hackseries.dev";
+      const senderName = process.env.EMAIL_FROM?.split("<")[0]?.trim() || "HackSeries Team";
+
+      const brevoRes = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "api-key": brevoApiKey,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          sender: { name: senderName, email: senderEmail },
+          to: [{ email: attendee.email, name: attendee.fullName }],
+          subject: `🎟️ Your Official HackSeries 2026 Entry Pass [${attendee.regNumber}]`,
+          htmlContent: html,
+          attachment: [
+            {
+              name: `HackSeries_Pass_${attendee.regNumber}.png`,
+              content: qrBuffer.toString("base64"),
+            },
+          ],
+        }),
+      });
+
+      const resData = await brevoRes.json();
+      if (!brevoRes.ok) {
+        throw new Error(`Brevo Error: ${resData.message || JSON.stringify(resData)}`);
+      }
+
+      return {
+        success: true,
+        messageId: resData.messageId,
+      };
+    }
+
+    let transporter: nodemailer.Transporter;
+
+    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+      transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: process.env.SMTP_SECURE === "true",
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      });
+    } else if (process.env.RESEND_API_KEY) {
+      transporter = nodemailer.createTransport({
+        host: "smtp.resend.com",
+        port: 465,
+        secure: true,
+        auth: {
+          user: "resend",
+          pass: process.env.RESEND_API_KEY,
+        },
+      });
+    } else if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+      transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: process.env.GMAIL_USER,
+          pass: process.env.GMAIL_APP_PASSWORD,
+        },
+      });
+    } else {
+      const testAccount = await nodemailer.createTestAccount();
+      transporter = nodemailer.createTransport({
+        host: "smtp.ethereal.email",
+        port: 587,
+        secure: false,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+      });
+    }
+
+    const fromSender = process.env.EMAIL_FROM || (process.env.RESEND_API_KEY ? "HackSeries Pass <onboarding@resend.dev>" : "HackSeries 2026 Team <no-reply@hackseries.dev>");
 
     const info = await transporter.sendMail({
       from: fromSender,
