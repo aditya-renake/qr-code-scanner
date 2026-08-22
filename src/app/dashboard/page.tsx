@@ -11,7 +11,12 @@ import {
   RefreshCw,
   ShieldCheck,
   FileSpreadsheet,
-  ExternalLink
+  ExternalLink,
+  Mail,
+  Send,
+  Sparkles,
+  Upload,
+  Link as LinkIcon
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -23,6 +28,10 @@ export default function DashboardPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [seeding, setSeeding] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [syncingSheets, setSyncingSheets] = useState(false);
+  const [emailingId, setEmailingId] = useState<string | null>(null);
+  const [syncNotice, setSyncNotice] = useState<string>("");
+  const [sheetUrl, setSheetUrl] = useState("https://docs.google.com/spreadsheets/d/1RYoYFAmF6FGBMWr5pvSDGgw9nJxeWBe8Yjq8kTkJG8w/edit?usp=sharing");
 
   const fetchData = async () => {
     try {
@@ -100,6 +109,65 @@ export default function DashboardPage() {
     }
   };
 
+  const handleSendEmail = async (attendeeId: string) => {
+    setEmailingId(attendeeId);
+    try {
+      const res = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attendeeId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.message || "Failed to dispatch email");
+      } else {
+        alert("✅ " + data.message);
+      }
+    } catch (e: any) {
+      alert("Error: " + e.message);
+    } finally {
+      setEmailingId(null);
+    }
+  };
+
+  const handleSyncGoogleSheet = async () => {
+    setSyncingSheets(true);
+    setSyncNotice("");
+    try {
+      const res = await fetch("/api/sync-sheets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sheetUrl }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSyncNotice("✅ " + data.message);
+        await fetchData();
+      } else {
+        // Prompt for CSV paste
+        const pasteCsv = prompt("Could not auto-fetch private sheet. Please paste the CSV text or share sheet to Public/Anyone with link, or paste CSV rows below:");
+        if (pasteCsv) {
+          const res2 = await fetch("/api/sync-sheets", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ csvContent: pasteCsv }),
+          });
+          const data2 = await res2.json();
+          if (data2.success) {
+            setSyncNotice("✅ " + data2.message);
+            await fetchData();
+          } else {
+            alert(data2.message);
+          }
+        }
+      }
+    } catch (e: any) {
+      alert("Sync error: " + e.message);
+    } finally {
+      setSyncingSheets(false);
+    }
+  };
+
   const exportCSV = () => {
     if (!attendees.length) return;
     const headers = ["Reg Number", "Full Name", "Email", "Phone", "College", "Team", "Role", "Track", "T-Shirt", "Diet", "Main Gate Checked In", "Checkpoints Claimed"];
@@ -141,6 +209,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8 py-2">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -182,6 +251,41 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Google Forms & Sheets Live Sync & Auto Emailer Card */}
+      <div className="cyber-card p-6 rounded-3xl border border-emerald-500/40 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+              <Mail className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Google Forms & Sheets Live Emailer</h3>
+              <p className="text-xs text-slate-400">
+                Sync responses from your Google Form and automatically email HMAC QR passes to all participants.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSyncGoogleSheet}
+              disabled={syncingSheets}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-black text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition transform hover:-translate-y-0.5 disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{syncingSheets ? "Syncing & Sending Emails..." : "Sync & Email Google Form Passes"}</span>
+            </button>
+          </div>
+        </div>
+
+        {syncNotice && (
+          <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs font-mono">
+            {syncNotice}
+          </div>
+        )}
+      </div>
+
+      {/* KPI Overview Cards */}
       {stats && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="cyber-card p-5 rounded-2xl space-y-2">
@@ -222,6 +326,7 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Checkpoint Multi-Stage Progress */}
       {stats && stats.checkpointStats && (
         <div className="cyber-card p-6 rounded-3xl space-y-4 border border-slate-800">
           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">
@@ -250,6 +355,7 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Attendee Directory Table */}
       <div className="cyber-card p-6 rounded-3xl space-y-4 border border-slate-800">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h3 className="text-base font-bold text-white">Registered Attendee Directory ({filteredAttendees.length})</h3>
@@ -341,19 +447,30 @@ export default function DashboardPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right space-x-2">
+                    <td className="px-4 py-3 text-right space-x-1.5">
+                      <button
+                        onClick={() => handleSendEmail(a.id)}
+                        disabled={emailingId === a.id}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25 text-[10px] font-semibold transition disabled:opacity-50"
+                        title="Send / Re-send QR Ticket via Email"
+                      >
+                        <Mail className="w-3 h-3" />
+                        <span>{emailingId === a.id ? "Sending..." : "Email QR"}</span>
+                      </button>
+
                       {!a.isCheckedIn && (
                         <button
                           onClick={() => handleManualCheckIn(a.id)}
-                          className="px-2.5 py-1 rounded-lg bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/25 text-[10px] font-bold transition"
+                          className="px-2 py-1 rounded-lg bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/25 text-[10px] font-bold transition"
                         >
-                          Manual Admit
+                          Admit
                         </button>
                       )}
+
                       <Link
                         href={"/ticket/" + a.id}
                         target="_blank"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-semibold transition"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-semibold transition"
                       >
                         <ExternalLink className="w-3 h-3" />
                         <span>Pass</span>

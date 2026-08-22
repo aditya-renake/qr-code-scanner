@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAttendee, getAttendeeByEmail } from "@/lib/db";
 import { generateQRCodeDataURL } from "@/lib/qr";
-import { sendTicketEmail } from "@/lib/mail";
-
-export const dynamic = 'force-dynamic';
+import { sendTicketEmail } from "@/lib/email";
 
 export async function POST(req: Request) {
   try {
@@ -20,6 +18,7 @@ export async function POST(req: Request) {
     const existing = await getAttendeeByEmail(email);
     if (existing) {
       const qrDataURL = await generateQRCodeDataURL(existing.qrToken || "");
+      sendTicketEmail({ attendee: existing, qrPayloadString: existing.qrToken || "" }).catch(console.error);
       return NextResponse.json(
         {
           success: true,
@@ -46,13 +45,15 @@ export async function POST(req: Request) {
 
     const qrDataURL = await generateQRCodeDataURL(attendee.qrToken || "");
 
-    // Send the email with the QR code attached
-    await sendTicketEmail(attendee, qrDataURL);
+    sendTicketEmail({
+      attendee,
+      qrPayloadString: attendee.qrToken || "",
+    }).catch((err) => console.error("Async email dispatch notice:", err));
 
     return NextResponse.json(
       {
         success: true,
-        message: "Registration successful! Ticket issued and emailed.",
+        message: "Registration successful! Cryptographic ticket pass issued & email dispatched.",
         attendee,
         qrDataURL,
         isExisting: false,

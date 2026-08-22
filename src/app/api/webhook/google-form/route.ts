@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import { getAllAttendees, createAttendee, getAttendeeByEmail } from "@/lib/db";
+import { createAttendee, getAttendeeByEmail } from "@/lib/db";
 import { generateQRCodeDataURL } from "@/lib/qr";
-import { sendTicketEmail } from "@/lib/mail";
-
-export const dynamic = 'force-dynamic';
+import { sendTicketEmail } from "@/lib/email";
 
 export async function POST(req: Request) {
   try {
@@ -18,8 +16,6 @@ export async function POST(req: Request) {
       track = "AI & Machine Learning",
       tShirtSize = "L",
       dietaryPreference = "Vegetarian",
-      regNumber,
-      qrToken,
     } = body;
 
     if (!email || !fullName) {
@@ -29,41 +25,41 @@ export async function POST(req: Request) {
       );
     }
 
-    const existing = await getAttendeeByEmail(email);
-    if (existing) {
-      return NextResponse.json({
-        success: true,
-        message: "Attendee already registered in database",
-        attendee: existing,
-        isExisting: true,
+    let attendee = await getAttendeeByEmail(email);
+    let isExisting = false;
+
+    if (attendee) {
+      isExisting = true;
+    } else {
+      attendee = await createAttendee({
+        fullName,
+        email,
+        phone: phone || "+91 00000 00000",
+        college: college || "Individual / Independent",
+        teamName: teamName || "Solo Innovator",
+        role: role || "hacker",
+        track: track || "AI & Machine Learning",
+        tShirtSize: tShirtSize || "L",
+        dietaryPreference: dietaryPreference || "Vegetarian",
       });
     }
-
-    const attendee = await createAttendee({
-      fullName,
-      email,
-      phone: phone || "+91 00000 00000",
-      college: college || "Individual / Independent",
-      teamName: teamName || "Solo Innovator",
-      role: role || "hacker",
-      track: track || "AI & Machine Learning",
-      tShirtSize: tShirtSize || "L",
-      dietaryPreference: dietaryPreference || "Vegetarian",
-    });
 
     const qrDataURL = await generateQRCodeDataURL(attendee.qrToken || "");
 
     // Send the email with the QR code attached
-    await sendTicketEmail(attendee, qrDataURL);
+    await sendTicketEmail({ attendee, qrPayloadString: attendee.qrToken || "" });
 
     return NextResponse.json(
       {
         success: true,
-        message: "Attendee synced successfully and email sent!",
+        message: isExisting
+          ? "Attendee already registered. Re-sent ticket email."
+          : "Attendee registered and ticket pass emailed successfully!",
         attendee,
         qrDataURL,
+        isExisting,
       },
-      { status: 201 }
+      { status: isExisting ? 200 : 201 }
     );
   } catch (err: any) {
     return NextResponse.json(
