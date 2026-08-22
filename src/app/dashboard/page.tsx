@@ -31,6 +31,9 @@ export default function DashboardPage() {
   const [syncingSheets, setSyncingSheets] = useState(false);
   const [emailingId, setEmailingId] = useState<string | null>(null);
   const [syncNotice, setSyncNotice] = useState<string>("");
+  const [testEmailAddr, setTestEmailAddr] = useState("");
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<any>(null);
   const [sheetUrl, setSheetUrl] = useState("https://docs.google.com/spreadsheets/d/1RYoYFAmF6FGBMWr5pvSDGgw9nJxeWBe8Yjq8kTkJG8w/edit?usp=sharing");
 
   const fetchData = async () => {
@@ -168,7 +171,23 @@ export default function DashboardPage() {
     }
   };
 
-  const exportCSV = () => {
+  const handleRunEmailTest = async () => {
+    if (!testEmailAddr) {
+      alert("Please type a recipient email address to test.");
+      return;
+    }
+    setTestingEmail(true);
+    setTestEmailResult(null);
+    try {
+      const res = await fetch("/api/test-email?to=" + encodeURIComponent(testEmailAddr));
+      const data = await res.json();
+      setTestEmailResult(data);
+    } catch (e: any) {
+      setTestEmailResult({ success: false, error: e.message });
+    } finally {
+      setTestingEmail(false);
+    }
+  };
     if (!attendees.length) return;
     const headers = ["Reg Number", "Full Name", "Email", "Phone", "College", "Team", "Role", "Track", "T-Shirt", "Diet", "Main Gate Checked In", "Checkpoints Claimed"];
     const rows = attendees.map((a) => [
@@ -281,6 +300,49 @@ export default function DashboardPage() {
         {syncNotice && (
           <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs font-mono">
             {syncNotice}
+          </div>
+        )}
+      </div>
+
+      {/* Email Diagnostic Test Tool */}
+      <div className="cyber-card p-5 rounded-3xl border border-cyan-500/30 shadow-lg space-y-3 bg-slate-900/60">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-bold text-cyan-300 flex items-center gap-1.5">
+              <span>🧪</span> Email Delivery Diagnostic Test
+            </h4>
+            <p className="text-[11px] text-slate-400">
+              Type your personal email address below to test your Vercel email credentials in 1 click.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="email"
+              placeholder="your-email@gmail.com"
+              value={testEmailAddr}
+              onChange={(e) => setTestEmailAddr(e.target.value)}
+              className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-400 w-56"
+            />
+            <button
+              onClick={handleRunEmailTest}
+              disabled={testingEmail}
+              className="px-3.5 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition disabled:opacity-50"
+            >
+              {testingEmail ? "Testing..." : "Send Test Email"}
+            </button>
+          </div>
+        </div>
+
+        {testEmailResult && (
+          <div className={"p-3 rounded-xl text-xs font-mono border " + (testEmailResult.success ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300" : "bg-rose-950/40 border-rose-500/40 text-rose-300")}>
+            <p className="font-bold mb-1">{testEmailResult.success ? "✅ SUCCESS: Test email sent!" : "❌ ERROR: Email failed to send"}</p>
+            {testEmailResult.provider && <p>Provider: {testEmailResult.provider}</p>}
+            {testEmailResult.error && <p className="text-rose-400">Error Details: {testEmailResult.error}</p>}
+            {testEmailResult.detectedConfig && (
+              <p className="text-[10px] text-slate-400 mt-1">
+                Detected Config: {JSON.stringify(testEmailResult.detectedConfig)}
+              </p>
+            )}
           </div>
         )}
       </div>
