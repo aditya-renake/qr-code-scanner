@@ -21,6 +21,44 @@ export async function sendTicketEmail(params: SendTicketEmailParams): Promise<{ 
       },
     });
 
+    // Direct Brevo REST API Support (works with xkeysib- API keys)
+    const brevoApiKey = process.env.BREVO_API_KEY || (process.env.SMTP_PASS?.startsWith("xkeysib-") ? process.env.SMTP_PASS : null);
+    if (brevoApiKey) {
+      const senderEmail = process.env.EMAIL_FROM?.match(/<([^>]+)>/)?.[1] || process.env.EMAIL_FROM || process.env.SMTP_USER || "tickets@hackseries.dev";
+      const senderName = process.env.EMAIL_FROM?.split("<")[0]?.trim() || "HackSeries Team";
+
+      const brevoRes = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "api-key": brevoApiKey,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          sender: { name: senderName, email: senderEmail },
+          to: [{ email: attendee.email, name: attendee.fullName }],
+          subject: `🎟️ Your Official HackSeries 2026 Entry Pass [${attendee.regNumber}]`,
+          htmlContent: html,
+          attachment: [
+            {
+              name: `HackSeries_Pass_${attendee.regNumber}.png`,
+              content: qrBuffer.toString("base64"),
+            },
+          ],
+        }),
+      });
+
+      const resData = await brevoRes.json();
+      if (!brevoRes.ok) {
+        throw new Error(`Brevo Error: ${resData.message || JSON.stringify(resData)}`);
+      }
+
+      return {
+        success: true,
+        messageId: resData.messageId,
+      };
+    }
+
     let transporter: nodemailer.Transporter;
 
     if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
