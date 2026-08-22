@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #090a10;
+  --foreground: #f1f5f9;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Cyber holographic gradient backgrounds */
+.cyber-gradient {
+  background: radial-gradient(circle at 50% 0%, rgba(34, 197, 94, 0.15), transparent 70%),
+              radial-gradient(circle at 100% 50%, rgba(0, 240, 255, 0.1), transparent 50%),
+              radial-gradient(circle at 0% 100%, rgba(157, 78, 221, 0.1), transparent 50%);
+}
+
+.cyber-card {
+  background: rgba(18, 20, 31, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cyber-card:hover {
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.cyber-badge {
+  background: linear-gradient(135deg, rgba(18, 20, 31, 0.9) 0%, rgba(10, 11, 16, 0.95) 100%);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  box-shadow: 0 10px 30px -5px rgba(0, 240, 255, 0.2), inset 0 0 15px rgba(0, 240, 255, 0.05);
+}
+
+/* Scanner laser animation */
+@keyframes scanLaser {
+  0% { top: 5%; opacity: 0.8; }
+  50% { top: 90%; opacity: 1; }
+  100% { top: 5%; opacity: 0.8; }
+}
+
+.scanner-laser {
+  animation: scanLaser 2s ease-in-out infinite;
+}
+
+/* Holographic animated ribbon */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.holo-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(0, 240, 255, 0.15) 25%,
+    rgba(255, 0, 127, 0.15) 50%,
+    rgba(34, 197, 94, 0.15) 75%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 4s infinite linear;
+}
+
+/* Print styles for physical badge printing */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .cyber-badge {
+    border: 2px solid #000 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+}
