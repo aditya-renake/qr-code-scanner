@@ -3,9 +3,9 @@ import { getAllAttendees, getCheckpoints, getAllScanLogs } from "@/lib/db";
 
 export async function GET() {
   try {
-    const attendees = getAllAttendees();
-    const checkpoints = getCheckpoints();
-    const scanLogs = getAllScanLogs();
+    const attendees = await getAllAttendees();
+    const checkpoints = await getCheckpoints();
+    const scanLogs = await getAllScanLogs();
 
     const totalRegistered = attendees.length;
     const entryCheckpoint = checkpoints[0];

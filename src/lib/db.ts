@@ -1,16 +1,10 @@
-import fs from "fs";
-import path from "path";
+import { Redis } from '@upstash/redis';
 import { Attendee, Checkpoint, ScanLog, VerificationResult } from "./types";
 import { generateSignedQRPayload, serializeQRPayload, verifyQRPayload } from "./crypto";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DB_FILE = path.join(DATA_DIR, "store.json");
-
-interface DataStore {
-  attendees: Attendee[];
-  checkpoints: Checkpoint[];
-  scanLogs: ScanLog[];
-}
+// Initialize Redis from Environment Variables
+// Requires UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN
+const redis = Redis.fromEnv();
 
 const DEFAULT_CHECKPOINTS: Checkpoint[] = [
   {
@@ -55,70 +49,33 @@ const DEFAULT_CHECKPOINTS: Checkpoint[] = [
   },
 ];
 
-function ensureDataStore(): DataStore {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+export async function getAllAttendees(): Promise<Attendee[]> {
+  const attendeesMap = await redis.hgetall<Record<string, Attendee>>("hs:attendees");
+  if (!attendeesMap) return [];
+  return Object.values(attendeesMap).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+export async function getAttendeeById(id: string): Promise<Attendee | undefined> {
+  // Check if it's a registration number
+  if (id.toUpperCase().startsWith("HS-")) {
+    const attendeeId = await redis.hget<string>("hs:regs", id.toUpperCase());
+    if (!attendeeId) return undefined;
+    return (await redis.hget<Attendee>("hs:attendees", attendeeId)) || undefined;
   }
-
-  if (!fs.existsSync(DB_FILE)) {
-    const initial: DataStore = {
-      attendees: [],
-      checkpoints: DEFAULT_CHECKPOINTS,
-      scanLogs: [],
-    };
-    fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2), "utf8");
-    return initial;
-  }
-
-  try {
-    const raw = fs.readFileSync(DB_FILE, "utf8");
-    const data = JSON.parse(raw) as DataStore;
-    if (!data.checkpoints || data.checkpoints.length === 0) {
-      data.checkpoints = DEFAULT_CHECKPOINTS;
-      saveStore(data);
-    }
-    return data;
-  } catch (e) {
-    const fallback: DataStore = {
-      attendees: [],
-      checkpoints: DEFAULT_CHECKPOINTS,
-      scanLogs: [],
-    };
-    fs.writeFileSync(DB_FILE, JSON.stringify(fallback, null, 2), "utf8");
-    return fallback;
-  }
+  
+  return (await redis.hget<Attendee>("hs:attendees", id)) || undefined;
 }
 
-function saveStore(store: DataStore) {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  const tempFile = DB_FILE + ".tmp";
-  fs.writeFileSync(tempFile, JSON.stringify(store, null, 2), "utf8");
-  fs.renameSync(tempFile, DB_FILE);
+export async function getAttendeeByEmail(email: string): Promise<Attendee | undefined> {
+  const attendeeId = await redis.hget<string>("hs:emails", email.toLowerCase());
+  if (!attendeeId) return undefined;
+  return (await redis.hget<Attendee>("hs:attendees", attendeeId)) || undefined;
 }
 
-export function getAllAttendees(): Attendee[] {
-  const store = ensureDataStore();
-  return store.attendees;
-}
-
-export function getAttendeeById(id: string): Attendee | undefined {
-  const store = ensureDataStore();
-  return store.attendees.find((a) => a.id === id || a.regNumber.toUpperCase() === id.toUpperCase());
-}
-
-export function getAttendeeByEmail(email: string): Attendee | undefined {
-  const store = ensureDataStore();
-  return store.attendees.find((a) => a.email.toLowerCase() === email.toLowerCase());
-}
-
-export function createAttendee(data: Omit<Attendee, "id" | "regNumber" | "createdAt" | "status" | "qrToken">): Attendee {
-  const store = ensureDataStore();
-
-  const existing = store.attendees.find((a) => a.email.toLowerCase() === data.email.toLowerCase());
-  if (existing) {
-    throw new Error(`An attendee with email ${data.email} is already registered (${existing.regNumber}).`);
+export async function createAttendee(data: Omit<Attendee, "id" | "regNumber" | "createdAt" | "status" | "qrToken">): Promise<Attendee> {
+  const existingId = await redis.hget<string>("hs:emails", data.email.toLowerCase());
+  if (existingId) {
+    throw new Error(`An attendee with email ${data.email} is already registered.`);
   }
 
   const id = "att_" + Math.random().toString(36).substring(2, 9) + Date.now().toString(36).slice(-4);
@@ -136,42 +93,44 @@ export function createAttendee(data: Omit<Attendee, "id" | "regNumber" | "create
   const payload = generateSignedQRPayload(newAttendee);
   newAttendee.qrToken = serializeQRPayload(payload);
 
-  store.attendees.unshift(newAttendee);
-  saveStore(store);
+  // Pipeline for atomic-ish insertion
+  const p = redis.pipeline();
+  p.hset("hs:attendees", { [id]: newAttendee });
+  p.hset("hs:emails", { [data.email.toLowerCase()]: id });
+  p.hset("hs:regs", { [regNumber.toUpperCase()]: id });
+  await p.exec();
+
   return newAttendee;
 }
 
-export function getCheckpoints(): Checkpoint[] {
-  const store = ensureDataStore();
-  return store.checkpoints;
+export async function getCheckpoints(): Promise<Checkpoint[]> {
+  return DEFAULT_CHECKPOINTS;
 }
 
-export function getCheckpointById(id: string): Checkpoint | undefined {
-  const store = ensureDataStore();
-  return store.checkpoints.find((c) => c.id === id);
+export async function getCheckpointById(id: string): Promise<Checkpoint | undefined> {
+  return DEFAULT_CHECKPOINTS.find((c) => c.id === id);
 }
 
-export function getAllScanLogs(): ScanLog[] {
-  const store = ensureDataStore();
-  return store.scanLogs;
+export async function getAllScanLogs(): Promise<ScanLog[]> {
+  const logs = await redis.lrange<ScanLog>("hs:scanlogs", 0, -1);
+  return logs || [];
 }
 
-export function getScanLogsForAttendee(attendeeId: string): ScanLog[] {
-  const store = ensureDataStore();
-  return store.scanLogs.filter((s) => s.attendeeId === attendeeId);
+export async function getScanLogsForAttendee(attendeeId: string): Promise<ScanLog[]> {
+  const logs = await getAllScanLogs();
+  return logs.filter((s) => s.attendeeId === attendeeId);
 }
 
-export function verifyAndProcessScan(params: {
+export async function verifyAndProcessScan(params: {
   qrContent: string;
   checkpointId: string;
   scannedBy?: string;
   gateLocation?: string;
-}): VerificationResult {
-  const store = ensureDataStore();
+}): Promise<VerificationResult> {
   const { qrContent, checkpointId, scannedBy = "Gate Staff", gateLocation = "Main Gate North" } = params;
 
   // 1. Verify Checkpoint
-  const checkpoint = store.checkpoints.find((c) => c.id === checkpointId) || store.checkpoints[0];
+  const checkpoint = DEFAULT_CHECKPOINTS.find((c) => c.id === checkpointId) || DEFAULT_CHECKPOINTS[0];
 
   // 2. Cryptographic signature check
   const verifyResult = verifyQRPayload(qrContent);
@@ -187,7 +146,7 @@ export function verifyAndProcessScan(params: {
   const payload = verifyResult.payload;
 
   // 3. Match Attendee in Database
-  const attendee = store.attendees.find((a) => a.id === payload.aid || a.regNumber === payload.id);
+  const attendee = await getAttendeeById(payload.aid);
   if (!attendee) {
     return {
       success: false,
@@ -207,13 +166,12 @@ export function verifyAndProcessScan(params: {
     };
   }
 
-  // 4. Duplicate Check-in Check for this specific Checkpoint
-  const previousScans = store.scanLogs.filter(
-    (log) => log.attendeeId === attendee.id && log.checkpointId === checkpoint.id && log.status === "valid"
-  );
+  // 4. Duplicate Check-in Check
+  const previousScans = await getScanLogsForAttendee(attendee.id);
+  const relevantScans = previousScans.filter((log) => log.checkpointId === checkpoint.id && log.status === "valid");
 
-  if (previousScans.length >= checkpoint.maxScansPerAttendee) {
-    const lastScan = previousScans[previousScans.length - 1];
+  if (relevantScans.length >= checkpoint.maxScansPerAttendee) {
+    const lastScan = relevantScans[0]; // Assuming reverse chronological or we just pick first matched
     return {
       success: false,
       status: "ALREADY_CHECKED_IN",
@@ -240,8 +198,7 @@ export function verifyAndProcessScan(params: {
     message: "Verified & Admitted",
   };
 
-  store.scanLogs.unshift(newLog);
-  saveStore(store);
+  await redis.lpush("hs:scanlogs", newLog);
 
   return {
     success: true,
@@ -253,10 +210,9 @@ export function verifyAndProcessScan(params: {
   };
 }
 
-export function manualCheckInAttendee(attendeeId: string, checkpointId: string, operatorName = "Admin Override"): VerificationResult {
-  const store = ensureDataStore();
-  const attendee = store.attendees.find((a) => a.id === attendeeId);
-  const checkpoint = store.checkpoints.find((c) => c.id === checkpointId) || store.checkpoints[0];
+export async function manualCheckInAttendee(attendeeId: string, checkpointId: string, operatorName = "Admin Override"): Promise<VerificationResult> {
+  const attendee = await getAttendeeById(attendeeId);
+  const checkpoint = DEFAULT_CHECKPOINTS.find((c) => c.id === checkpointId) || DEFAULT_CHECKPOINTS[0];
 
   if (!attendee) {
     return {
@@ -266,12 +222,11 @@ export function manualCheckInAttendee(attendeeId: string, checkpointId: string, 
     };
   }
 
-  const previousScans = store.scanLogs.filter(
-    (log) => log.attendeeId === attendee.id && log.checkpointId === checkpoint.id && log.status === "valid"
-  );
+  const previousScans = await getScanLogsForAttendee(attendee.id);
+  const relevantScans = previousScans.filter((log) => log.checkpointId === checkpoint.id && log.status === "valid");
 
-  if (previousScans.length >= checkpoint.maxScansPerAttendee) {
-    const lastScan = previousScans[previousScans.length - 1];
+  if (relevantScans.length >= checkpoint.maxScansPerAttendee) {
+    const lastScan = relevantScans[0];
     return {
       success: false,
       status: "ALREADY_CHECKED_IN",
@@ -296,8 +251,7 @@ export function manualCheckInAttendee(attendeeId: string, checkpointId: string, 
     message: "Manual Check-in by Admin",
   };
 
-  store.scanLogs.unshift(newLog);
-  saveStore(store);
+  await redis.lpush("hs:scanlogs", newLog);
 
   return {
     success: true,
@@ -309,8 +263,10 @@ export function manualCheckInAttendee(attendeeId: string, checkpointId: string, 
   };
 }
 
-export function seedDemoData() {
-  const store = ensureDataStore();
+export async function seedDemoData(): Promise<{ attendees: number; scans: number }> {
+  // Clear existing
+  await redis.del("hs:attendees", "hs:emails", "hs:regs", "hs:scanlogs");
+
   const demoList = [
     {
       fullName: "Aditya Renake",
@@ -402,8 +358,8 @@ export function seedDemoData() {
     },
   ];
 
-  store.attendees = [];
-  store.scanLogs = [];
+  const p = redis.pipeline();
+  const createdAttendees: Attendee[] = [];
 
   demoList.forEach((data, index) => {
     const id = "att_demo_" + (index + 1);
@@ -417,59 +373,68 @@ export function seedDemoData() {
     };
     const payload = generateSignedQRPayload(attendee);
     attendee.qrToken = serializeQRPayload(payload);
-    store.attendees.push(attendee);
+    
+    createdAttendees.push(attendee);
+
+    p.hset("hs:attendees", { [id]: attendee });
+    p.hset("hs:emails", { [data.email.toLowerCase()]: id });
+    p.hset("hs:regs", { [regNumber]: id });
   });
 
-  // Pre-seed some scan logs for realistic telemetry
-  const entryCP = store.checkpoints[0];
-  const lunchCP = store.checkpoints[1];
+  await p.exec();
 
-  store.scanLogs.push({
-    id: "scan_demo_1",
-    attendeeId: store.attendees[0].id,
-    regNumber: store.attendees[0].regNumber,
-    attendeeName: store.attendees[0].fullName,
-    checkpointId: entryCP.id,
-    checkpointName: entryCP.name,
-    scannedAt: new Date(Date.now() - 45 * 60000).toISOString(),
-    scannedBy: "Gate 1 - Volunteer",
-    gateLocation: "North Auditorium Gate",
-    status: "valid",
-  });
+  // Pre-seed some scan logs
+  const entryCP = DEFAULT_CHECKPOINTS[0];
+  const lunchCP = DEFAULT_CHECKPOINTS[1];
 
-  store.scanLogs.push({
-    id: "scan_demo_2",
-    attendeeId: store.attendees[1].id,
-    regNumber: store.attendees[1].regNumber,
-    attendeeName: store.attendees[1].fullName,
-    checkpointId: entryCP.id,
-    checkpointName: entryCP.name,
-    scannedAt: new Date(Date.now() - 30 * 60000).toISOString(),
-    gateLocation: "South Entrance",
-    scannedBy: "Gate 2 - Volunteer",
-    status: "valid",
-  });
+  const p2 = redis.pipeline();
 
-  store.scanLogs.push({
-    id: "scan_demo_3",
-    attendeeId: store.attendees[0].id,
-    regNumber: store.attendees[0].regNumber,
-    attendeeName: store.attendees[0].fullName,
-    checkpointId: lunchCP.id,
-    checkpointName: lunchCP.name,
-    scannedAt: new Date(Date.now() - 10 * 60000).toISOString(),
-    gateLocation: "Dining Hall Counter 1",
-    scannedBy: "Catering Lead",
-    status: "valid",
-  });
+  const logs = [
+    {
+      id: "scan_demo_1",
+      attendeeId: createdAttendees[0].id,
+      regNumber: createdAttendees[0].regNumber,
+      attendeeName: createdAttendees[0].fullName,
+      checkpointId: entryCP.id,
+      checkpointName: entryCP.name,
+      scannedAt: new Date(Date.now() - 45 * 60000).toISOString(),
+      scannedBy: "Gate 1 - Volunteer",
+      gateLocation: "North Auditorium Gate",
+      status: "valid",
+    },
+    {
+      id: "scan_demo_2",
+      attendeeId: createdAttendees[1].id,
+      regNumber: createdAttendees[1].regNumber,
+      attendeeName: createdAttendees[1].fullName,
+      checkpointId: entryCP.id,
+      checkpointName: entryCP.name,
+      scannedAt: new Date(Date.now() - 30 * 60000).toISOString(),
+      gateLocation: "South Entrance",
+      scannedBy: "Gate 2 - Volunteer",
+      status: "valid",
+    },
+    {
+      id: "scan_demo_3",
+      attendeeId: createdAttendees[0].id,
+      regNumber: createdAttendees[0].regNumber,
+      attendeeName: createdAttendees[0].fullName,
+      checkpointId: lunchCP.id,
+      checkpointName: lunchCP.name,
+      scannedAt: new Date(Date.now() - 10 * 60000).toISOString(),
+      gateLocation: "Dining Hall Counter 1",
+      scannedBy: "Catering Lead",
+      status: "valid",
+    }
+  ];
 
-  saveStore(store);
-  return { attendees: store.attendees.length, scans: store.scanLogs.length };
+  logs.forEach(log => p2.lpush("hs:scanlogs", log));
+  await p2.exec();
+
+  return { attendees: demoList.length, scans: logs.length };
 }
 
-export function resetScanLogs() {
-  const store = ensureDataStore();
-  store.scanLogs = [];
-  saveStore(store);
+export async function resetScanLogs(): Promise<{ success: boolean }> {
+  await redis.del("hs:scanlogs");
   return { success: true };
 }

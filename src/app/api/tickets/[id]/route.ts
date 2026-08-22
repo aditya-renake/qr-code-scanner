@@ -5,15 +5,15 @@ import { generateQRCodeDataURL } from "@/lib/qr";
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   try {
     const id = params.id;
-    const attendee = getAttendeeById(id);
+    const attendee = await getAttendeeById(id);
 
     if (!attendee) {
       return NextResponse.json({ success: false, message: "Ticket / Attendee not found" }, { status: 404 });
     }
 
     const qrDataURL = await generateQRCodeDataURL(attendee.qrToken || "");
-    const checkpoints = getCheckpoints();
-    const scanLogs = getScanLogsForAttendee(attendee.id);
+    const checkpoints = await getCheckpoints();
+    const scanLogs = await getScanLogsForAttendee(attendee.id);
 
     const checkpointStatus = checkpoints.map((cp) => {
       const logs = scanLogs.filter((l) => l.checkpointId === cp.id && l.status === "valid");

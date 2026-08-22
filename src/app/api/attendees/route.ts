@@ -7,9 +7,9 @@ export async function GET(req: Request) {
     const search = (searchParams.get("search") || "").toLowerCase();
     const role = searchParams.get("role") || "all";
 
-    let attendees = getAllAttendees();
-    const scanLogs = getAllScanLogs();
-    const checkpoints = getCheckpoints();
+    let attendees = await getAllAttendees();
+    const scanLogs = await getAllScanLogs();
+    const checkpoints = await getCheckpoints();
 
     if (role !== "all") {
       attendees = attendees.filter((a) => a.role === role);
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: "Attendee ID required" }, { status: 400 });
     }
 
-    const result = manualCheckInAttendee(attendeeId, checkpointId || "cp-gate-entry", operatorName || "Admin Manual");
+    const result = await manualCheckInAttendee(attendeeId, checkpointId || "cp-gate-entry", operatorName || "Admin Manual");
     return NextResponse.json(result, { status: result.success ? 200 : 400 });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });

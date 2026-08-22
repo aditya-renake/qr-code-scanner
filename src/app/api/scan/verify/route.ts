@@ -13,7 +13,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = verifyAndProcessScan({
+    const result = await verifyAndProcessScan({
       qrContent,
       checkpointId: checkpointId || "cp-gate-entry",
       scannedBy: scannedBy || "Gate Volunteer #1",
