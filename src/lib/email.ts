@@ -23,7 +23,17 @@ export async function sendTicketEmail(params: SendTicketEmailParams): Promise<{ 
 
     let transporter: nodemailer.Transporter;
 
-    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    if (process.env.RESEND_API_KEY) {
+      transporter = nodemailer.createTransport({
+        host: "smtp.resend.com",
+        port: 465,
+        secure: true,
+        auth: {
+          user: "resend",
+          pass: process.env.RESEND_API_KEY,
+        },
+      });
+    } else if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
       transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
         port: Number(process.env.SMTP_PORT) || 587,
@@ -57,7 +67,7 @@ export async function sendTicketEmail(params: SendTicketEmailParams): Promise<{ 
     const eventName = "HackSeries 2026";
     const eventDates = "October 24 - 25, 2026";
     const eventVenue = "Main Innovation Auditorium & Arena, Campus Hub";
-    const fromSender = process.env.EMAIL_FROM || "HackSeries 2026 Team <no-reply@hackseries.dev>";
+    const fromSender = process.env.EMAIL_FROM || (process.env.RESEND_API_KEY ? "HackSeries Pass <onboarding@resend.dev>" : "HackSeries 2026 Team <no-reply@hackseries.dev>");
 
     const html = `<!DOCTYPE html>
 <html>
