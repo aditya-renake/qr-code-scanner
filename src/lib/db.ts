@@ -2,9 +2,11 @@ import { Redis } from '@upstash/redis';
 import { Attendee, Checkpoint, ScanLog, VerificationResult } from "./types";
 import { generateSignedQRPayload, serializeQRPayload, verifyQRPayload } from "./crypto";
 
-// Initialize Redis from Environment Variables
-// Requires UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN
-const redis = Redis.fromEnv();
+// Initialize Redis gracefully to prevent build-time crashes if env vars are missing
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL || 'https://dummy.upstash.io',
+  token: process.env.UPSTASH_REDIS_REST_TOKEN || 'dummy_token',
+});
 
 const DEFAULT_CHECKPOINTS: Checkpoint[] = [
   {
