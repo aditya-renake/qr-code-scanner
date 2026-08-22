@@ -4,8 +4,8 @@ import { generateSignedQRPayload, serializeQRPayload, verifyQRPayload } from "./
 
 // Initialize Redis gracefully to prevent build-time crashes if env vars are missing
 const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL || 'https://dummy.upstash.io',
-  token: process.env.UPSTASH_REDIS_REST_TOKEN || 'dummy_token',
+  url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL || 'https://dummy.upstash.io',
+  token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN || 'dummy_token',
 });
 
 const DEFAULT_CHECKPOINTS: Checkpoint[] = [
