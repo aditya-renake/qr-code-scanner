@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getAllAttendees, createAttendee, getAttendeeByEmail } from "@/lib/db";
 import { generateQRCodeDataURL } from "@/lib/qr";
+import { sendTicketEmail } from "@/lib/mail";
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
@@ -50,10 +53,13 @@ export async function POST(req: Request) {
 
     const qrDataURL = await generateQRCodeDataURL(attendee.qrToken || "");
 
+    // Send the email with the QR code attached
+    await sendTicketEmail(attendee, qrDataURL);
+
     return NextResponse.json(
       {
         success: true,
-        message: "Attendee synced successfully from Google Forms / Sheets!",
+        message: "Attendee synced successfully and email sent!",
         attendee,
         qrDataURL,
       },

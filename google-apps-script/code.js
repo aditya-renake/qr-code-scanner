@@ -3,19 +3,14 @@
  * HACKSERIES 2026 — AUTOMATED QR TICKET & EMAIL ISSUER (GOOGLE APPS SCRIPT)
  * ==============================================================================
  * 
- * Instructions for Setup:
+ * Instructions:
  * 1. Open your Google Sheet: https://docs.google.com/spreadsheets/d/1RYoYFAmF6FGBMWr5pvSDGgw9nJxeWBe8Yjq8kTkJG8w/edit
- * 2. Click "Extensions" -> "Apps Script" in top menu bar.
- * 3. Delete any existing code in the editor, and paste this entire script.
- * 4. Click the Save icon (💾).
- * 5. Set up the Automatic Trigger:
- *    - Click the clock icon on the left navigation bar ("Triggers").
- *    - Click "+ Add Trigger" (bottom right button).
- *    - Choose function: "onFormSubmit"
- *    - Event source: "From spreadsheet"
- *    - Event type: "On form submit"
- *    - Click "Save" and grant permissions.
- * 6. Done! Every time someone submits the form, they instantly receive their QR pass via email!
+ * 2. Click "Extensions" -> "Apps Script".
+ * 3. Paste this code into Code.gs and click Save (💾).
+ * 4. Ensure you have the Trigger configured:
+ *    - Function: onFormSubmit
+ *    - Event Source: From spreadsheet
+ *    - Event Type: On form submit
  */
 
 var CONFIG = {
@@ -86,8 +81,19 @@ function processRow(sheet, rowNum) {
   }
 
   var email = getVal(["Email", "Email Address", "Your Email", "Email ID"]);
-  var fullName = getVal(["Name", "Full Name", "Participant Name", "Your Name"], "Participant");
-  var phone = getVal(["Phone", "Phone Number", "Mobile", "WhatsApp Number"], "+91 00000 00000");
+  // Fallback: search row values for an email pattern if header name did not match
+  if (!email || email.indexOf("@") === -1) {
+    for (var col = 0; col < rowValues.length; col++) {
+      var val = rowValues[col] ? rowValues[col].toString().trim() : "";
+      if (val.indexOf("@") !== -1 && val.indexOf(".") !== -1) {
+        email = val;
+        break;
+      }
+    }
+  }
+
+  var fullName = getVal(["Name", "Full Name", "Participant Name", "Your Name", "Name-"], "Participant");
+  var phone = getVal(["Phone", "Phone Number", "Mobile", "WhatsApp", "Contact"], "+91 00000 00000");
   var college = getVal(["College", "University", "Institution", "College / Organization"], "Independent Developer");
   var teamName = getVal(["Team", "Team Name", "Name of Team"], "Solo Innovator");
   var role = getVal(["Role", "Participant Role", "Category"], "hacker").toLowerCase();
@@ -96,7 +102,7 @@ function processRow(sheet, rowNum) {
   var dietaryPreference = getVal(["Diet", "Dietary", "Food Preference", "Meal Preference"], "Vegetarian");
 
   if (!email || email.indexOf("@") === -1) {
-    Logger.log("Skipping row " + rowNum + ": Invalid email");
+    Logger.log("Skipping row " + rowNum + ": Invalid or missing email address");
     return;
   }
 
@@ -293,9 +299,10 @@ function sendTestTicket() {
 
 function findColumnIndex(headers, possibleNames) {
   for (var i = 0; i < headers.length; i++) {
-    var h = headers[i].toString().trim().toLowerCase();
+    var h = headers[i].toString().trim().toLowerCase().replace(/[-_:]/g, " ").replace(/\s+/g, " ");
     for (var j = 0; j < possibleNames.length; j++) {
-      if (h === possibleNames[j].toLowerCase() || h.indexOf(possibleNames[j].toLowerCase()) !== -1) {
+      var target = possibleNames[j].toLowerCase().replace(/[-_:]/g, " ").replace(/\s+/g, " ");
+      if (h === target || h.indexOf(target) !== -1 || target.indexOf(h) !== -1) {
         return i;
       }
     }
